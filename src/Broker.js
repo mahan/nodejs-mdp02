@@ -22,6 +22,10 @@ const events = {
     READY = true,
     IN_USE = false;
 
+function toUInt32(buff) {
+    return buff.readUInt32BE(1);
+}
+
 function protocolError(broker, frames) {
     broker.emitErr(new MDP02.E_PROTOCOL('Wrong frames number', frames));
 }
@@ -29,18 +33,23 @@ function protocolError(broker, frames) {
 function prepareClientMessageStrategies() {
     let strategies = {};
 
-    strategies[MDP02.C_REQUEST] = (broker, socketId, frames) => {
+    strategies[MDP02.C_REQUEST] = (broker, socket, bSocketId, frames) => {
         if (frames.length < 3) {
             protocolError(broker);
         } else {
             let serviceName = frames[2].toString(),
                 command = frames.slice(3);
-            broker.emit(events.EV_REQ, {socketId: socketId, service: serviceName, data: command});
-            broker.enqueueRequest(socketId, serviceName, command);
+            broker.emit(events.EV_REQ, {
+                binding: socket.boundTo,
+                socketId: bSocketId,
+                service: serviceName,
+                data: command
+            });
+            broker.enqueueRequest(socket, bSocketId, serviceName, command);
         }
     };
 
-    strategies[events.EV_ERR] = (broker, socketId, frames) => {
+    strategies[events.EV_ERR] = (broker, socket, bSocketId, frames) => {
         protocolError(broker, frames);
     };
 
@@ -50,45 +59,47 @@ function prepareClientMessageStrategies() {
 function prepareWorkerMessageStrategies() {
     let strategies = {};
 
-    strategies[MDP02.W_HEARTBEAT] = (broker, socketId, frames) => {
-        let worker = broker.workers[socketId];
+    strategies[MDP02.W_HEARTBEAT] = (broker, socket, bSocketId, frames) => {
+        let worker = broker.workers[toUInt32(bSocketId)];
         if (frames.length !== 2) {
             protocolError(broker, frames);
         } else {
-            broker.emit(events.EV_HB, {socketId: socketId, service: worker.service});
-            broker._sendHeartBeat(socketId);
+            broker.emit(events.EV_HB, {socketId: bSocketId, service: worker.service});
+            broker._sendHeartBeat(worker);
         }
     };
 
-    strategies[MDP02.W_DISCONNECT] = (broker, socketId, frames) => {
-        let worker = broker.workers[socketId];
+    strategies[MDP02.W_DISCONNECT] = (broker, socket, bSocketId, frames) => {
+        let worker = broker.workers[toUInt32(bSocketId)];
         if (frames.length !== 2) {
             protocolError(broker, frames);
         } else {
             broker.removeWorker(worker);
-            broker.emit(events.EV_DISCONNECT, {socketId: socketId, service: worker.service});
+            broker.emit(events.EV_DISCONNECT, {socketId: bSocketId, service: worker.service});
         }
     };
 
-    strategies[MDP02.W_READY] = (broker, socketId, frames) => {
-        // let worker = broker.workers[socketId];
+    strategies[MDP02.W_READY] = (broker, socket, bSocketId, frames) => {
         if (frames.length !== 3) {
             protocolError(broker, frames);
         } else {
             let serviceName = frames[2].toString();
-            broker.addWorker(socketId, serviceName);
-            broker.emit(events.EV_WREADY, {socketId: socketId, service: serviceName});
+            broker.addWorker(socket, bSocketId, serviceName);
+            broker.emit(events.EV_WREADY, {socketId: bSocketId, service: serviceName});
             broker.fulfillRequests();
         }
     };
 
-    strategies[MDP02.W_FINAL] = (broker, socketId, frames) => {
-        let worker = broker.workers[socketId];
+    strategies[MDP02.W_FINAL] = (broker, socket, bSocketId, frames) => {
+        let worker = broker.workers[toUInt32(bSocketId)];
         if (frames.length >= 5) {
-            let clientSocketId = JSON.stringify(frames[2]),
-                data = frames.slice(4);
-            broker.emit(events.EV_WFINAL, {socketId: socketId, service: worker.service, data: data});
-            broker.socket.send([Buffer.from(JSON.parse(clientSocketId)), MDP02.CLIENT, MDP02.C_FINAL, worker.service, data]);
+            let bClientSocketId = frames[2],
+                clientSocketId = toUInt32(bClientSocketId),
+                data = frames.slice(4),
+                request = broker.requests[clientSocketId];
+            broker.emit(events.EV_WFINAL, {socketId: bSocketId, service: worker.service, data: data});
+
+            request.socket.send([bClientSocketId, MDP02.CLIENT, MDP02.C_FINAL, worker.service, data]);
             broker.changeWorkerStatus(worker, READY);
             clientSocketId && delete broker.requests[clientSocketId];
             broker.fulfillRequests();
@@ -97,25 +108,27 @@ function prepareWorkerMessageStrategies() {
         }
     };
 
-    strategies[MDP02.W_PARTIAL] = (broker, socketId, frames) => {
-        let worker = broker.workers[socketId];
+    strategies[MDP02.W_PARTIAL] = (broker, socket, bSocketId, frames) => {
+        let worker = broker.workers[toUInt32(bSocketId)];
         if (frames.length >= 5) {
-            let clientSocketId = JSON.stringify(frames[2]),
+            let bClientSocketId = frames[2],
+                clientSocketId = toUInt32(bClientSocketId),
+                request = broker.requests[clientSocketId],
                 data = frames.slice(4);
-            broker.emit(events.EV_WPARTIAL, {socketId: socketId, service: worker.service, data: data});
-            broker.socket.send([Buffer.from(JSON.parse(clientSocketId)), MDP02.CLIENT, MDP02.C_PARTIAL, worker.service, data]);
+            broker.emit(events.EV_WPARTIAL, {socketId: bSocketId, service: worker.service, data: data});
+            request.socket.send([bClientSocketId, MDP02.CLIENT, MDP02.C_PARTIAL, worker.service, data]);
         } else {
             protocolError(broker, frames);
         }
     };
-    strategies[events.EV_ERR] = (broker, socketId, frames) => {
+    strategies[events.EV_ERR] = (broker, socket, bSocketId, frames) => {
         protocolError(broker, frames);
     };
     return strategies;
 }
 
 const WORKER_MESSAGE_STRATEGIES = prepareWorkerMessageStrategies(),
-    CLIENT_MESSAGE_STRATEGIES = prepareClientMessageStrategies(this);
+    CLIENT_MESSAGE_STRATEGIES = prepareClientMessageStrategies();
 
 class Broker extends EventEmitter {
 
@@ -130,56 +143,62 @@ class Broker extends EventEmitter {
     }
 
     start() {
-        if (this.socket) {
+        if (this.sockets.length) {
             return false;
         } else {
-
-
-            this.socket = zmq.socket('router');
             this.workers = {};
             this.services = {};
-            this.socket.on('message', (...args) => {
-                this.emit(events.EV_MESSAGE, args);
-                try {
-                    this._onMsg(args);
-                } catch (err) {
-                    this.emitErr(err);
-                }
-            });
-            this.socket.on('error', (err) => {
-                this.emitErr(err);
-            });
+
             this.addresses.forEach((addr) => {
-                this.socket.bind(addr);
+                let socket = zmq.socket('router');
+                this.sockets.push(socket);
+                socket.bind(addr);
+                socket.boundTo = addr;
+                socket.on('message', (...args) => {
+                    this.emit(events.EV_MESSAGE, args);
+                    try {
+                        this._onMsg(socket, args);
+                    } catch (err) {
+                        this.emitErr(err);
+                    }
+                });
+                socket.on('error', (err) => {
+                    this.emitErr(err);
+                });
             });
+
             return true;
         }
     }
 
     stop() {
-        if (this.socket) {
+        if (this.sockets.length) {
             this.requests = {};
             this.workers = {};
             this.services = {};
-            this.socket.removeAllListeners();
-            this.socket.close();
-            delete this.socket;
+
+            this.sockets.forEach((socket) => {
+                socket.removeAllListeners();
+                socket.close();
+            });
+            this.sockets = [];
             delete this._currentClient;
         }
     }
 
-    _onMsg(rep) {
-
+    _onMsg(socket, rep) {
         this.cleanupWorkersAndRequests();
-        let socketId = JSON.stringify(rep[0]),
+
+        let bSocketId = rep[0],
             frames = rep.slice(1),
             header = frames[0].toString();
+
         switch (header) {
             case MDP02.CLIENT:
-                this._onClientMsg(socketId, frames);
+                this._onClientMsg(socket, bSocketId, frames);
                 break;
             case MDP02.WORKER:
-                this._onWorkerMsg(socketId, frames);
+                this._onWorkerMsg(socket, bSocketId, frames);
                 break;
             default:
                 protocolError(this, frames);
@@ -187,36 +206,36 @@ class Broker extends EventEmitter {
 
     }
 
-    _onWorkerMsg(socketId, frames) {
+    _onWorkerMsg(socket, bSocketId, frames) {
         let messageType = frames[1].toString(),
-            worker = this.workers[socketId];
+            worker = this.workers[toUInt32(bSocketId)];
         if (worker || messageType === MDP02.W_READY) {
             let strategy = WORKER_MESSAGE_STRATEGIES[messageType];
 
             if (strategy !== undefined) {
                 if (worker !== undefined) worker.ts = Date.now();
-                strategy(this, socketId, frames);
+                strategy(this, socket, bSocketId, frames);
             } else {
-                WORKER_MESSAGE_STRATEGIES[events.EV_ERR](this, socketId, frames)
+                WORKER_MESSAGE_STRATEGIES[events.EV_ERR](this, socket, bSocketId, frames)
             }
         }
     }
 
-    _onClientMsg(socketId, frames) {
+    _onClientMsg(socket, bSocketId, frames) {
         let messageType = frames[1].toString(),
             strategy = CLIENT_MESSAGE_STRATEGIES[messageType];
 
         if (strategy !== undefined) {
-            strategy(this, socketId, frames);
+            strategy(this, socket, bSocketId, frames);
         } else {
-            CLIENT_MESSAGE_STRATEGIES[events.EV_ERR](this, socketId, frames)
+            CLIENT_MESSAGE_STRATEGIES[events.EV_ERR](this, socket, bSocketId, frames)
         }
 
     }
 
     changeWorkerStatus(worker, ready) {
         let serviceName = worker.service,
-            socketId = worker.socketId;
+            socketId = toUInt32(worker.socketId);
         if (ready === READY) {
             if (this.services[serviceName] === undefined) {
                 this.services[serviceName] = [socketId];
@@ -231,27 +250,29 @@ class Broker extends EventEmitter {
         }
     }
 
-    _sendHeartBeat(socketId) {
-        this.socket.send([
-            Buffer.from(JSON.parse(socketId)),
+    _sendHeartBeat(worker) {
+        worker.socket.send([
+            worker.socketId,
             MDP02.WORKER,
             MDP02.W_HEARTBEAT
         ]);
     }
 
-    _sendDisconnect(socketId) {
-        this.socket.send([
-            Buffer.from(JSON.parse(socketId)),
+    _sendDisconnect(worker) {
+        worker.socket.send([
+            worker.socketId,
             MDP02.WORKER,
             MDP02.W_DISCONNECT
         ]);
     }
 
-    enqueueRequest(socketId, serviceName, command) {
+    enqueueRequest(socket, bSocketId, serviceName, command) {
+        let socketId = toUInt32(bSocketId);
         if (!this.requests[socketId]) {
             this.requests[socketId] = {
                 ts: Date.now(),
-                socketId: socketId,
+                socket: socket,
+                socketId: bSocketId,
                 service: serviceName,
                 message: command,
                 served: false
@@ -275,22 +296,25 @@ class Broker extends EventEmitter {
         if (this.services[serviceName] && this.services[serviceName].length) {
             let socketId = this.services[serviceName][0];
             worker = this.workers[socketId];
+
             if (worker) {
                 this.changeWorkerStatus(worker, IN_USE);
                 request.served = true;
-                this.socket.send([
-                    Buffer.from(JSON.parse(worker.socketId)), MDP02.WORKER, MDP02.W_REQUEST,
-                    Buffer.from(JSON.parse(request.socketId)), ''
+                worker.socket.send([
+                    worker.socketId, MDP02.WORKER, MDP02.W_REQUEST,
+                    request.socketId, ''
                 ].concat(request.message));
             }
         }
     }
 
-    addWorker(socketId, serviceName) {
+    addWorker(socket, bSocketId, serviceName) {
+        let socketId = toUInt32(bSocketId);
         if (!this.workers[socketId]) {
             let worker = {
                 ts: Date.now(),
-                socketId: socketId,
+                socket: socket,
+                socketId: bSocketId,
                 service: serviceName
             };
             this.workers[socketId] = worker;
@@ -300,7 +324,7 @@ class Broker extends EventEmitter {
 
     removeWorker(worker) {
         this.changeWorkerStatus(worker, IN_USE);
-        delete this.workers[worker.socketId];
+        delete this.workers[toUInt32(worker.socketId)];
     }
 
     cleanupWorkersAndRequests() {
@@ -317,7 +341,7 @@ class Broker extends EventEmitter {
         Object.keys(this.workers).forEach((socketId) => {
             currentWorker = this.workers[socketId];
             if (now - currentWorker.ts > workerTimeout) {
-                this._sendDisconnect(socketId);
+                this._sendDisconnect(currentWorker);
                 this.removeWorker(currentWorker);
             }
         });
@@ -332,7 +356,8 @@ function makeBroker(props) {
         clientTimeout: MDP02.TIMEOUT,
         requests: {},
         workers: {},
-        services: {}
+        services: {},
+        sockets: []
     }, props);
 
     MDP02.addToProcessListener(() => broker.stop());
@@ -341,16 +366,3 @@ function makeBroker(props) {
 
 module.exports = makeBroker;
 module.exports.events = events;
-
-
-
-// Object.defineProperties(Broker, {
-//     workerTimeout: {
-//         value: MDP02.TIMEOUT,
-//         writable: true
-//     },
-//     clientTimeout: {
-//         value: MDP02.TIMEOUT,
-//         writable: true
-//     }
-// });

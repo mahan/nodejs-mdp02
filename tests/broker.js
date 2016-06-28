@@ -1,10 +1,13 @@
 "use strict";
 
-const makeBroker = require('../src/Broker');
+const makeBroker = require('../src/Broker'),
+    {tcp, tcp2, ipc} = require("./addresses");
 
 const broker = makeBroker({
     addresses: [
-        "tcp://127.0.0.1:4242"
+        tcp,
+        tcp2,
+        ipc
     ]
 });
 

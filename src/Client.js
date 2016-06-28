@@ -8,7 +8,6 @@ const EventEmitter = require('events'),
 
 const events = {
     EV_ERR: 'error',
-    // EV_ERR_TIMEOUT: 'timeoutError',  -----not used
     EV_TIMEOUT: 'timeout',
     EV_DATA: 'data',
     EV_END: 'end'
@@ -62,10 +61,8 @@ class Client extends EventEmitter {
             this._service = service;
             this._currentMessage = msg;
             this._tries = 0;
-
             this.start();
             setImmediate(() => this._sendMsg(msg));
-            this._sendMsg(msg);
             this.reqTimer = setInterval(() => this._intervalFunction(), this.timeout);
 
             return true;

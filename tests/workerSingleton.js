@@ -1,10 +1,11 @@
 "use strict";
 
-const makeWorker = require('../src/Worker');
+const makeWorker = require('../src/Worker'),
+    tcp = require("./addresses").tcp;
 
 const worker = makeWorker({
     serviceName: "singleton",
-    address: "tcp://127.0.0.1:4242"
+    address: tcp
 });
 
 let calls = 0;

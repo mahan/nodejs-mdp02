@@ -2,6 +2,7 @@
 
 const spawn = require('child_process').spawn,
     path = require('path'),
+    {tcp, tcp2, ipc} = require("./addresses"),
     makeClient = require('../src/Client'),
     assert = require('assert');
 
@@ -28,9 +29,9 @@ function newProcess(file) {
     return childProc
 }
 
-function newClient(client, cb) {
+function newClient(address) {
     return makeClient({
-        address: "tcp://127.0.0.1:4242"
+        address: address || tcp
     });
 }
 
@@ -41,8 +42,8 @@ describe("mdp02", function() {
         workersProcesses = [
             newProcess("workerTime"),
             newProcess("workerHello"),
-            newProcess("workerSingleton")
-            // newProcess("workerSlowed")
+            newProcess("workerSingleton"),
+            newProcess("workerDate")
         ];
         for (let i = 0; i < concurrentWorkerSlowed; i++) {
             workersProcesses.push(newProcess("workerSlowed"))
@@ -156,6 +157,62 @@ describe("mdp02", function() {
             for (let i = 0; i < concurrentWorkerSlowed; i++) {
                 doClient();
             }
+
+        });
+    });
+
+    describe("Broker", function () {
+        it(`should serve using different sockets (client on ${tcp2}, worker on ${tcp})`, function(cb) {
+            const timeClient = newClient(tcp2);
+            timeClient.on(makeClient.events.EV_END, function(message) {
+                assert(parseInt(message.data, 10) > 0);
+                timeClient.stop();
+                cb();
+            });
+            timeClient.on(makeClient.events.EV_ERR, function(err) {
+                timeClient.stop();
+                cb(err);
+            });
+
+            timeClient.start();
+            timeClient.send("time");
+        });
+
+        it("should work using ipc protocol", function(cb) {
+            const today = new Date().toJSON().slice(0, 10),
+                dateClient = newClient(ipc);
+            dateClient.on(makeClient.events.EV_END, function(message) {
+                let result = message.data.toString();
+                assert(result === today, `expected: '${today}', got: '${result}'`);
+                dateClient.stop();
+                cb();
+            });
+            dateClient.on(makeClient.events.EV_ERR, function(err) {
+                dateClient.stop();
+                cb(err);
+            });
+
+            dateClient.start();
+            dateClient.send("date");
+
+        });
+
+        it("should serve using different sockets (client on tcp, worker on ipc)", function(cb) {
+            const today = new Date().toJSON().slice(0, 10),
+                dateClient = newClient();
+            dateClient.on(makeClient.events.EV_END, function(message) {
+                let result = message.data.toString();
+                assert(result === today, `expected: '${today}', got: ${result}`);
+                dateClient.stop();
+                cb();
+            });
+            dateClient.on(makeClient.events.EV_ERR, function(err) {
+                dateClient.stop();
+                cb(err);
+            });
+
+            dateClient.start();
+            dateClient.send("date");
 
         });
     });

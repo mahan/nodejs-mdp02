@@ -1,15 +1,15 @@
 "use strict";
 
 const makeWorker = require('../src/Worker'),
-    tcp = require("./addresses").tcp;
+    ipc = require("./addresses").ipc;
 
 const worker = makeWorker({
-    serviceName: "time",
-    address: tcp
+    serviceName: "date",
+    address: ipc
 });
 
 worker.on(makeWorker.events.EV_REQ, function () {
-    worker.send(Date.now().toString());
+    worker.send(new Date().toJSON().slice(0, 10));
 });
 
 worker.start();

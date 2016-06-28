@@ -1,10 +1,11 @@
 "use strict";
 
-const makeWorker = require('../src/Worker');
+const makeWorker = require('../src/Worker'),
+    tcp = require("./addresses").tcp;
 
 const worker = makeWorker({
     serviceName: "sayhello",
-    address: "tcp://127.0.0.1:4242"
+    address: tcp
 });
 
 worker.on(makeWorker.events.EV_REQ, function (request) {
