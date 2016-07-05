@@ -4,7 +4,8 @@
 require('babel-polyfill');
 const EventEmitter = require('events'),
     zmq = require('zmq'),
-    MDP02 = require('./mdp02');
+    MDP02 = require('./mdp02'),
+    Readable = require('stream').Readable;
 
 const events = {
     EV_ERR: 'error',
@@ -13,6 +14,40 @@ const events = {
     EV_END: 'end'
 };
 
+class ZMQReadable extends Readable {
+    constructor(zmqClient, options) {
+        super(options);
+        this.zmqClient = zmqClient;
+        zmqClient.on(events.EV_DATA, (event) => {
+            event.data.forEach((data) => {
+                this.emit("data", data);
+            });
+        });
+        zmqClient.on(events.EV_END, () => {
+            this.emit("end");
+        });
+        zmqClient.on(events.EV_ERR, (err) => {
+            this.emit("error", err);
+        });
+    }
+
+    pause() {
+        this.zmqClient.socket.pause();
+    }
+
+    isPaused() {
+        return this.zmqClient.socket.isPaused();
+    }
+
+    resume() {
+        this.zmqClient.socket.resume();
+    }
+
+    _read() {
+        this.resume();
+    }
+}
+
 class Client extends EventEmitter {
     createSocket() {
         if (this.socket) {
@@ -20,6 +55,7 @@ class Client extends EventEmitter {
             this.socket.close();
         }
         this.socket = zmq.socket('dealer');
+        this.socket.pause();
         this.socket.on('message', (...args) => {
 
             try {
@@ -35,16 +71,15 @@ class Client extends EventEmitter {
 
     emitErr(err) {
         this.emit(events.EV_ERR, err);
-        clearInterval(this.reqTimer);
-        delete this.reqTimer;
+        this._stopReceiver();
         this.stop();
     }
 
     _intervalFunction() {
         if (this._tries < this.maxRetries) {
-            this.stop(true);
+            this._disconnect()
             this.start();
-            this._sendMsg(this._currentMessage);
+            this._sendMsg();
             this._tries++;
         } else {
             this.emitErr(new MDP02.E_TIMEOUT('Timeout'));
@@ -52,20 +87,36 @@ class Client extends EventEmitter {
     }
 
     send(service, msg) {
-        this._service = service;
-        if (this.reqTimer || !this._service) {
-            return false;
-        } else {
-            clearInterval(this.reqTimer);
-            delete this.reqTimer;
-            this._service = service;
-            this._currentMessage = msg;
-            this._tries = 0;
-            this.start();
-            setImmediate(() => this._sendMsg(msg));
-            this.reqTimer = setInterval(() => this._intervalFunction(), this.timeout);
+        if (!service) {
+            throw MDP02.E_PROTOCOL("sevice name is mandatory");
+        }
 
-            return true;
+        let stream = new ZMQReadable(this);
+
+        this._processRequest({
+            service,
+            msg,
+            stream
+        });
+
+        return stream;
+
+    }
+
+    _processRequest(request) {
+        if (request) {
+            this.requests.push(request);
+        }
+        if (!this.reqTimer) {
+            let currRequest = this.requests.shift();
+            if (currRequest) {
+                this._service = currRequest.service;
+                this._currentMessage = currRequest.msg;
+                this._tries = 0;
+                this.start();
+                this.reqTimer = setInterval(() => this._intervalFunction(), this.timeout);
+                setImmediate(() => this._sendMsg());
+            }
         }
     }
 
@@ -77,18 +128,21 @@ class Client extends EventEmitter {
         return this;
     }
 
-    stop(keepInterval) {
+    stop() {
         if (this.connected) {
-            if (!keepInterval) {
-                clearInterval(this.reqTimer);
-                delete this.reqTimer;
-            }
+            this._stopReceiver();
+            this._disconnect();
+        }
+        return this;
+    }
+    
+    _disconnect() {
+        if (this.socket) {
             this.socket.removeAllListeners();
             this.socket.close();
             this.connected = false;
             delete this.socket;
         }
-        return this;
     }
 
     _isValid(rep) {
@@ -112,38 +166,46 @@ class Client extends EventEmitter {
 
     _onMsg(rep) {
         if (this._isValid(rep)) {
-            clearInterval(this.reqTimer);
-            delete this.reqTimer;
+            this._stopReceiver();
             let messageType = rep[1].toString(),
                 service = rep[2].toString(),
                 responseData = rep.slice(3);
 
 
             this._tries = 0;
-            if (messageType === MDP02.C_PARTIAL) {
-                this.reqTimer = setInterval(() => this._intervalFunction(), this.timeout);
-            } else { //MDP02.C_FINAL
-                this._tries = 0;
-                this._currentMessage = null;
-            }
+
             this.emit(events.EV_DATA, {
                 service: service,
                 messageType: messageType,
-                data: responseData});
+                data: responseData
+            });
+
             if (messageType === MDP02.C_FINAL) {
+                this._stopReceiver();
                 this.emit(events.EV_END, {
                     service: service,
                     messageType: messageType,
-                    data: responseData});
+                    data: responseData
+                });
+                setImmediate(() => this._processRequest());
+            } else { //Partial
+                this.reqTimer = setInterval(() => this._intervalFunction(), this.timeout);
             }
         }
     }
 
-    _sendMsg(msg) {
+    _sendMsg() {
         this.socket.send([
             MDP02.CLIENT, MDP02.C_REQUEST, this._service,
-            msg
+            this._currentMessage
         ]);
+    }
+
+    _stopReceiver() {
+        clearInterval(this.reqTimer);
+        delete this.reqTimer;
+        delete this._tries;
+        delete this._currentMessage;
     }
 
 }
@@ -152,7 +214,8 @@ function makeClient(props) {
     let client = new Client();
 
     Object.assign(client, {
-        timeout: MDP02.TIMEOUT
+        timeout: MDP02.TIMEOUT,
+        requests: []
     }, props);
 
     MDP02.addToProcessListener(() => client.stop());

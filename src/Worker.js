@@ -5,7 +5,8 @@
 require('babel-polyfill');
 const EventEmitter = require('events'),
     zmq = require('zmq'),
-    MDP02 = require('./mdp02');
+    MDP02 = require('./mdp02'),
+    Writable = require('stream').Writable;
 
 const events = {
     EV_MESSAGE: 'message',
@@ -14,14 +15,47 @@ const events = {
     EV_CLOSE_REQ: 'close-request'
 };
 
+let processExit = false;
+
+class ZMQWritable extends Writable {
+    constructor(zmqWorker, options) {
+        super(options);
+        this.zmqWorker = zmqWorker;
+    }
+
+    _chunkToBuffer(chunk, enc) {
+        let buffer;
+        if (chunk) {
+            buffer = (Buffer.isBuffer(chunk)) ?
+                chunk :
+                Buffer.from(chunk, enc);
+        } else {
+            buffer = Buffer.alloc(0);
+        }
+        return buffer;
+    }
+
+    _write(chunk, enc, cb) {
+        this.zmqWorker._sendMsg(this._chunkToBuffer(chunk, enc), true);
+        cb();
+    }
+
+    _writev(chunks, cb) {
+        chunks.forEach((chunk)=>{
+            this.zmqWorker._sendMsg(this._chunkToBuffer(chunk, enc), true);
+        });
+        cb();
+    }
+
+    end(chunk, enc, cb) {
+        this.zmqWorker._sendMsg(this._chunkToBuffer(chunk, enc));
+        super.end(chunk, enc, cb);
+    }
+}
 
 class Worker extends EventEmitter {
     emitErr(err) {
-        setImmediate(() => self.emit('error', err));
-    }
-
-    send(msg, partial) {
-        this._sendMsg(msg, partial);
+        setImmediate(() => this.emit('error', err));
     }
 
     start() {
@@ -29,6 +63,8 @@ class Worker extends EventEmitter {
             return false;
         } else {
             delete this._currentClient;
+            this.socket.connect(this.address);
+            this._sendReady();
             return true;
         }
     }
@@ -39,6 +75,11 @@ class Worker extends EventEmitter {
             skipDisconnect || this._sendDisconnect();
             this.connected = false;
             delete this._currentClient;
+            if (processExit) {
+                this.socket.close();
+            } else {
+                this.socket.disconnect(address);
+            }
         }
     }
 
@@ -85,7 +126,11 @@ class Worker extends EventEmitter {
                         this.start();
                     } else {
                         this._currentClient = rep[2];
-                        this.emit(events.EV_REQ, rep.slice(4));
+
+                        this.emit(events.EV_REQ, {
+                            response: new ZMQWritable(this),
+                            request: rep.slice(4)
+                        });
                     }
                     break;
             }
@@ -124,10 +169,6 @@ class Worker extends EventEmitter {
         ]);
     }
 
-    _send() {
-        throw new Error('Abstract method calling: _send');
-    }
-
     startHeartBeat() {
         this.heartBeatTs = Date.now();
         this._hbTimer = setInterval(() => {
@@ -144,48 +185,20 @@ class Worker extends EventEmitter {
         clearInterval(this._hbTimer);
     }
 
+    _send(msg) {
+        this.socket.send(msg);
+    }
 }
 
 function makeWorker(props) {
     let worker = new Worker(),
-        address = props.address,
-        processExit = false,
         socket = zmq.socket('dealer');
     Object.assign(worker, {
         timeout: MDP02.TIMEOUT,
-        hbFrequence: MDP02.HB_FREQUENCE
+        hbFrequence: MDP02.HB_FREQUENCE,
+        socket: socket,
+        address: props.address
     }, props);
-
-    worker._send = function(msg) {
-        socket.send(msg);
-    };
-
-    let start = worker.start,
-        stop = worker.stop;
-
-    worker.start = () => {
-        "use strict";
-        if (start.call(worker)) {
-            socket.connect(address);
-            worker._sendReady();
-        }
-    };
-
-    let socketClosed = false;
-    worker.stop = (skipDisconnect) => {
-        "use strict";
-        stop.call(worker, [skipDisconnect]);
-
-        if (processExit) {
-            if (!socketClosed) {
-                socket.close();
-            }
-            socketClosed = true;
-        } else {
-            socket.disconnect(address);
-        }
-
-    };
 
     MDP02.addToProcessListener(() => {
         processExit = true;

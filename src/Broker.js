@@ -35,17 +35,20 @@ function prepareClientMessageStrategies() {
 
     strategies[MDP02.C_REQUEST] = (broker, socket, bSocketId, frames) => {
         if (frames.length < 3) {
+            console.error(`protocol error`);
             protocolError(broker);
         } else {
             let serviceName = frames[2].toString(),
                 command = frames.slice(3);
+
+            broker.enqueueRequest(socket, bSocketId, serviceName, command);
             broker.emit(events.EV_REQ, {
                 binding: socket.boundTo,
                 socketId: bSocketId,
                 service: serviceName,
                 data: command
             });
-            broker.enqueueRequest(socket, bSocketId, serviceName, command);
+
         }
     };
 
@@ -97,11 +100,12 @@ function prepareWorkerMessageStrategies() {
                 clientSocketId = toUInt32(bClientSocketId),
                 data = frames.slice(4),
                 request = broker.requests[clientSocketId];
-            broker.emit(events.EV_WFINAL, {socketId: bSocketId, service: worker.service, data: data});
-
-            request.socket.send([bClientSocketId, MDP02.CLIENT, MDP02.C_FINAL, worker.service, data]);
-            broker.changeWorkerStatus(worker, READY);
-            clientSocketId && delete broker.requests[clientSocketId];
+            if (request) {
+                broker.emit(events.EV_WFINAL, {socketId: bSocketId, service: worker.service, data: data});
+                request.socket.send([bClientSocketId, MDP02.CLIENT, MDP02.C_FINAL, worker.service, data]);
+                broker.changeWorkerStatus(worker, READY);
+                clientSocketId && delete broker.requests[clientSocketId];
+            }
             broker.fulfillRequests();
         } else {
             protocolError(broker, frames);
@@ -115,8 +119,10 @@ function prepareWorkerMessageStrategies() {
                 clientSocketId = toUInt32(bClientSocketId),
                 request = broker.requests[clientSocketId],
                 data = frames.slice(4);
-            broker.emit(events.EV_WPARTIAL, {socketId: bSocketId, service: worker.service, data: data});
-            request.socket.send([bClientSocketId, MDP02.CLIENT, MDP02.C_PARTIAL, worker.service, data]);
+            if (request) {
+                broker.emit(events.EV_WPARTIAL, {socketId: bSocketId, service: worker.service, data: data});
+                request.socket.send([bClientSocketId, MDP02.CLIENT, MDP02.C_PARTIAL, worker.service, data]);
+            }
         } else {
             protocolError(broker, frames);
         }
@@ -216,7 +222,7 @@ class Broker extends EventEmitter {
                 if (worker !== undefined) worker.ts = Date.now();
                 strategy(this, socket, bSocketId, frames);
             } else {
-                WORKER_MESSAGE_STRATEGIES[events.EV_ERR](this, socket, bSocketId, frames)
+                WORKER_MESSAGE_STRATEGIES[events.EV_ERR](this, socket, bSocketId, frames);
             }
         }
     }
@@ -228,7 +234,7 @@ class Broker extends EventEmitter {
         if (strategy !== undefined) {
             strategy(this, socket, bSocketId, frames);
         } else {
-            CLIENT_MESSAGE_STRATEGIES[events.EV_ERR](this, socket, bSocketId, frames)
+            CLIENT_MESSAGE_STRATEGIES[events.EV_ERR](this, socket, bSocketId, frames);
         }
 
     }
@@ -277,7 +283,7 @@ class Broker extends EventEmitter {
                 message: command,
                 served: false
             };
-            this.fulfillRequests();
+            setImmediate(() => this.fulfillRequests());
         }
     }
 

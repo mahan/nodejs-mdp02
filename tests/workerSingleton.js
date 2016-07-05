@@ -10,9 +10,10 @@ const worker = makeWorker({
 
 let calls = 0;
 
-worker.on(makeWorker.events.EV_REQ, function (request) {
+worker.on(makeWorker.events.EV_REQ, function (req) {
+    let response = req.response;
     calls++;
-    setTimeout(() => worker.send(calls), 200);
+    setTimeout(() => response.end(calls + ""), 200);
 });
 
 worker.start();
