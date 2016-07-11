@@ -10,8 +10,7 @@ applications, a broker and a set of worker applications.
 MDP covers presence, heartbeating, and service-oriented request-reply processing.  
 This protocol is ideal for a multiprocess distributed microservice architecture.
 
-
-![majordomo pattern](http://rfc.zeromq.org/spec:18/MDP/1.png")
+![majordomo pattern](http://rfc.zeromq.org/spec:18/MDP/1.png)
 
 
 The goals of MDP are to
