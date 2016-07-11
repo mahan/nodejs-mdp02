@@ -74,7 +74,7 @@ worker.start();
 ## Client
 
 Client is the request originator.  
-Clients can perform a request at a time.  
+Clients can execute a request at a time, requests sent are queued into Client internal buffer for sequential execution.  
 On send method a stream is returned.
 
 ```javascript
