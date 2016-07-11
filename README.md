@@ -6,8 +6,8 @@ for node.js and io.js to [ZeroMQ](http://zeromq.org/)
 
 
 The [Majordomo Protocol (MDP)](http://rfc.zeromq.org/spec:18) defines a reliable service-oriented request-reply dialog between a set of client
-applications, a broker and a set of worker applications. MDP covers presence, heartbeating,
-and service-oriented request-reply processing.  
+applications, a broker and a set of worker applications.  
+MDP covers presence, heartbeating, and service-oriented request-reply processing.  
 This protocol is ideal for a multiprocess distributed microservice architecture.
 
 
@@ -30,7 +30,7 @@ disconnected without breaking the request-response process, if the request timeo
 ## Broker
 
 Broker is the central unit that has the task to dispatch messages between a Client originating a request
-and a Worker that exposes a service and returns a response.
+and a Worker that exposes a service and returns a response.  
 A broker can be bound to more than a single socket. The service can be provided by workers connected
 to different end points.
 
@@ -73,7 +73,8 @@ worker.start();
 
 ## Client
 
-Client is the request originator. Clients can perform a request at a time.
+Client is the request originator.  
+Clients can perform a request at a time.  
 On send method a stream is returned.
 
 ```javascript
