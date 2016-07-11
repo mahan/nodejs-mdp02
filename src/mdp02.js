@@ -1,5 +1,6 @@
 "use strict";
 /* global require */
+require('babel-polyfill');
 
 const errors = require('./errors');
 

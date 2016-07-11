@@ -1,5 +1,7 @@
 "use strict";
 
+require('babel-polyfill');
+
 function TimeoutError(message) {
     this.message = message;
     this.stack = (new Error()).stack;
