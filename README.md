@@ -7,17 +7,18 @@ for node.js and io.js to [ZeroMQ](http://zeromq.org/)
 
 The [Majordomo Protocol (MDP)](http://rfc.zeromq.org/spec:18) defines a reliable service-oriented request-reply dialog between a set of client
 applications, a broker and a set of worker applications. MDP covers presence, heartbeating,
-and service-oriented request-reply processing.
+and service-oriented request-reply processing.  
 This protocol is ideal for a multiprocess distributed microservice architecture.
+
 
 ![majordomo pattern](http://rfc.zeromq.org/spec:18/MDP/1.png")
 
 
 The goals of MDP are to
-+ Allow requests to be routed to workers on the basis of abstract service names.
-+ Allow both peers to detect disconnection of the other peer, through the use of heartbeating.
-+ Allow the broker to implement a "least recently used" pattern for task distribution to workers for a given service.
-+ Allow the broker to recover from dead or disconnected workers by resending requests to other workers.
+* Allow requests to be routed to workers on the basis of abstract service names.
+* Allow both peers to detect disconnection of the other peer, through the use of heartbeating.
+* Allow the broker to implement a "least recently used" pattern for task distribution to workers for a given service.
+* Allow the broker to recover from dead or disconnected workers by resending requests to other workers.
 
 This library is ideal for a distributed micro-services architecture where scalability and performance are
 key features.
