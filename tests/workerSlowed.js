@@ -13,7 +13,7 @@ let calls = 0;
 worker.on(makeWorker.events.EV_REQ, function (req) {
     let response = req.response;
     calls++;
-    setTimeout(() => response.end(calls + ""), 200);
+    setTimeout(() => response.end(calls.toString(10)), 200);
 });
 
 worker.start();

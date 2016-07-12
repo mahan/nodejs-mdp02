@@ -9,10 +9,11 @@ const worker = makeWorker({
 });
 
 worker.on(makeWorker.events.EV_REQ, function (req) {
-    let response = req.response;
+    let response = req.response,
+        message = 1234567890;
 
 
-    response.end(1234567890 + "");
+    response.end(message.toString(10));
 });
 
 worker.start();
