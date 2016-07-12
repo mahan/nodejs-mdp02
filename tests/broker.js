@@ -4,7 +4,7 @@ const makeBroker = require('../src/Broker'),
     {tcp, tcp2, ipc} = require("./addresses");
 
 const broker = makeBroker({
-    addresses: [
+    bindings: [
         tcp,
         tcp2,
         ipc

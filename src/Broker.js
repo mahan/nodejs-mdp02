@@ -12,12 +12,10 @@ const events = {
         EV_MESSAGE: 'message',
         EV_ERR: 'error',
         EV_REQ: 'request',
-        EV_HB: 'heartbeat',
         EV_DISCONNECT: 'worker-disconnect',
+        EV_CONNECT: 'worker-connect',
         EV_WREADY: 'worker-ready',
-        EV_WFINAL: 'worker-final-data',
-        EV_WPARTIAL: 'worker-partial-data',
-        EV_RES: 'response'
+        EV_WBUSY: 'worker-busy'
     },
     READY = true,
     IN_USE = false;
@@ -44,7 +42,6 @@ function prepareClientMessageStrategies() {
             broker.enqueueRequest(socket, bSocketId, serviceName, command);
             broker.emit(events.EV_REQ, {
                 binding: socket.boundTo,
-                socketId: bSocketId,
                 service: serviceName,
                 data: command
             });
@@ -67,7 +64,6 @@ function prepareWorkerMessageStrategies() {
         if (frames.length !== 2) {
             protocolError(broker, frames);
         } else {
-            broker.emit(events.EV_HB, {socketId: bSocketId, service: worker.service});
             broker._sendHeartBeat(worker);
         }
     };
@@ -88,7 +84,7 @@ function prepareWorkerMessageStrategies() {
         } else {
             let serviceName = frames[2].toString();
             broker.addWorker(socket, bSocketId, serviceName);
-            broker.emit(events.EV_WREADY, {socketId: bSocketId, service: serviceName});
+            broker.emit(events.EV_CONNECT, {binding: socket.boundTo, service: serviceName});
             broker.fulfillRequests();
         }
     };
@@ -101,7 +97,6 @@ function prepareWorkerMessageStrategies() {
                 data = frames.slice(4),
                 request = broker.requests[clientSocketId];
             if (request) {
-                broker.emit(events.EV_WFINAL, {socketId: bSocketId, service: worker.service, data: data});
                 request.socket.send([bClientSocketId, MDP02.CLIENT, MDP02.C_FINAL, worker.service, data]);
                 broker.changeWorkerStatus(worker, READY);
                 clientSocketId && delete broker.requests[clientSocketId];
@@ -120,7 +115,6 @@ function prepareWorkerMessageStrategies() {
                 request = broker.requests[clientSocketId],
                 data = frames.slice(4);
             if (request) {
-                broker.emit(events.EV_WPARTIAL, {socketId: bSocketId, service: worker.service, data: data});
                 request.socket.send([bClientSocketId, MDP02.CLIENT, MDP02.C_PARTIAL, worker.service, data]);
             }
         } else {
@@ -155,7 +149,7 @@ class Broker extends EventEmitter {
             this.workers = {};
             this.services = {};
 
-            this.addresses.forEach((addr) => {
+            this.bindings.forEach((addr) => {
                 let socket = zmq.socket('router');
                 this.sockets.push(socket);
                 socket.bind(addr);
@@ -248,11 +242,13 @@ class Broker extends EventEmitter {
             } else {
                 this.services[serviceName].push(socketId);
             }
+            this.emit(events.EV_WREADY, {binding: worker.socket.boundTo, service: serviceName});
         } else if (ready === IN_USE && this.services[serviceName]) {
             let ixWorker = this.services[serviceName].indexOf(socketId);
             if (ixWorker >= 0) {
                 this.services[serviceName].splice(ixWorker, 1);
             }
+            this.emit(events.EV_WBUSY, {binding: worker.socket.boundTo, service: serviceName});
         }
     }
 
@@ -329,7 +325,6 @@ class Broker extends EventEmitter {
     }
 
     removeWorker(worker) {
-        this.changeWorkerStatus(worker, IN_USE);
         delete this.workers[toUInt32(worker.socketId)];
     }
 
@@ -349,6 +344,10 @@ class Broker extends EventEmitter {
             if (now - currentWorker.ts > workerTimeout) {
                 this._sendDisconnect(currentWorker);
                 this.removeWorker(currentWorker);
+                broker.emit(events.EV_DISCONNECT, {
+                    socketId: currentWorker.socket.boundTo,
+                    service: currentWorker.service
+                });
             }
         });
     }
