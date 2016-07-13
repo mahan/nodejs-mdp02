@@ -173,10 +173,76 @@ heath.
 
 #### Worker Events
 
-> name: **'request'**, Event: Object{response::Stream, request::Buffer}<br>
+> name: **'error'**, Event: Error<br>
+Emitted on erros (soket or protocol errors).
+
+> name: **'request'**, Event: Object{response::Stream, request::Buffer|Buffer[]}<br>
 Emitted when a worker receives a request from a Client through a broker
-* Event.response: a stream used to send the response back
+* Event.response: a [stream.Writable](https://nodejs.org/api/stream.html#stream_class_stream_writable) used to send the response back
 * Event.request: the request message originated from the client
 
 > name: **'close-request'**, Event: _null_<br>
 Emitted when the worker has finished sennding back its reply
+
+### Client
+
+Client can be accessed with:
+const makeWorker = require('mdp02/Client');
+
+**makeClient(opts) -> Client** is a function that returns a Client instance.
+A Client enqueue requests for the desired services and obtain responses in the
+give order.
+
+```javascript
+function newClient(address) {
+    return makeClient({
+        address: 'tcp://127.0.0.1:3333'
+    });
+}
+
+function makePromise() {
+    return new Promise(function(resolve, reject) {
+        let client = newClient(),
+            response = client.send("now");
+        response.on('data', function(data) {
+            resolve(parseInt(data, 10));
+        });
+        response.on('error', function(err) {
+            reject(err);
+        });
+    });
+}
+
+let p1 = makePromise(),
+    p2 = makePromise(),
+    p3 = makePromise();
+
+Promise.all([p1, p2, p3]).then(function (result) {
+    let [r1, r2, r3] = result;
+
+    assert(r1 < r2 < r3, `Resuts not in the correct order ${r1} < ${r2} < ${r3} ===  ${r1 < r2 < r3}`);
+});
+```
+
+* **address(required)**: The address to use to connect to the Broker.
+    ex.: 'tcp://127.0.0.1:3333'
+* **timeout**: (default to 5000 msec) Timeout for which a client
+  is considered in stale. A retry is performed in case.
+* **maxRetries** Number of time ca client can try a request.
+Must be grater than 1 (default is 3). If  the number of tries exceeds this limit
+an error event is emitted and the enqueued requests are discarded
+
+#### Client Properties
+
+
+
+#### Client Methods
+
+> **send(service::String, message::String|Buffer|String[]|Buffer[]) -> [stream.Readable](https://nodejs.org/api/stream.html#stream_class_stream_readable)** Send a request for a service and returns
+a stream.Readeable.
+* **service(required)**: The service name to call
+* **message**: The message to send to the desired service. Can be a String, Buffer or an array of strings or buffers.
+
+> **stop** Disconnects the client from the Broker and resets the request queue
+
+1) _workers, clients and broker timeouts should match to avoid false error handling_

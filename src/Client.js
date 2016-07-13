@@ -9,7 +9,6 @@ const EventEmitter = require('events'),
 
 const events = {
     EV_ERR: 'error',
-    EV_TIMEOUT: 'timeout',
     EV_DATA: 'data',
     EV_END: 'end'
 };
@@ -18,15 +17,15 @@ class ZMQReadable extends Readable {
     constructor(zmqClient, options) {
         super(options);
         this.zmqClient = zmqClient;
-        zmqClient.on(events.EV_DATA, (event) => {
+        zmqClient.on("data", (event) => {
             event.data.forEach((data) => {
                 this.emit("data", data);
             });
         });
-        zmqClient.on(events.EV_END, () => {
+        zmqClient.on("end", () => {
             this.emit("end");
         });
-        zmqClient.on(events.EV_ERR, (err) => {
+        zmqClient.on("error", (err) => {
             this.emit("error", err);
         });
     }
@@ -78,7 +77,7 @@ class Client extends EventEmitter {
     _intervalFunction() {
         if (this._tries < this.maxRetries) {
             this._disconnect()
-            this.start();
+            this._start();
             this._sendMsg();
             this._tries++;
         } else {
@@ -113,14 +112,14 @@ class Client extends EventEmitter {
                 this._service = currRequest.service;
                 this._currentMessage = currRequest.msg;
                 this._tries = 0;
-                this.start();
+                this._start();
                 this.reqTimer = setInterval(() => this._intervalFunction(), this.timeout);
                 setImmediate(() => this._sendMsg());
             }
         }
     }
 
-    start() {
+    _start() {
         if (!this.connected) {
             this.createSocket();
             this.connected = true;
@@ -135,7 +134,7 @@ class Client extends EventEmitter {
         }
         return this;
     }
-    
+
     _disconnect() {
         if (this.socket) {
             this.socket.removeAllListeners();
@@ -182,11 +181,7 @@ class Client extends EventEmitter {
 
             if (messageType === MDP02.C_FINAL) {
                 this._stopReceiver();
-                this.emit(events.EV_END, {
-                    service: service,
-                    messageType: messageType,
-                    data: responseData
-                });
+                this.emit(events.EV_END);
                 setImmediate(() => this._processRequest());
             } else { //Partial
                 this.reqTimer = setInterval(() => this._intervalFunction(), this.timeout);
@@ -210,6 +205,16 @@ class Client extends EventEmitter {
 
 }
 
+Object.defineProperty(Client.prototype, 'status', {
+    get: function () {
+        return {
+            tries: this._tries,
+            currentMessage: this._currentMessage,
+            currentService: this._service
+        };
+    }
+})
+
 function makeClient(props) {
     let client = new Client();
 
@@ -223,6 +228,3 @@ function makeClient(props) {
 }
 
 module.exports = makeClient;
-module.exports.events = events;
-
-

@@ -91,7 +91,7 @@ describe("mdp02", function() {
 
         it("can pipe response", function(cb) {
             const expected = "Hello world!";
-            
+
             let helloClient = newClient(),
                 fileName = path.resolve(cwd, 'tests', 'helloWorld.txt~'),
                 testFile = fs.createWriteStream(fileName),
@@ -129,7 +129,7 @@ describe("mdp02", function() {
             Promise.all([p1, p2, p3]).then(function (result) {
                 let [r1, r2, r3] = result;
 
-                assert(r1 < r2 < r3, `Resuts not in the correct order ${r1} > ${r2} > ${r3} ===  ${r1 < r2 < r3}`);
+                assert(r1 < r2 < r3, `Resuts not in the correct order ${r1} < ${r2} < ${r3} ===  ${r1 < r2 < r3}`);
                 cb();
             }).catch(cb);
 
