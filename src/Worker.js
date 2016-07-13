@@ -83,8 +83,6 @@ class Worker extends EventEmitter {
 
     _isValid(rep) {
         if (!Array.isArray(rep) || rep.length < 2) {
-            this.emitErr(new MDP02.E_PROTOCOL('Wrong frames number'));
-            this.stop();
             return false;
         }
 
@@ -92,12 +90,10 @@ class Worker extends EventEmitter {
         var messageType = rep[1].toString();
 
         if ((protocol !== MDP02.WORKER) || ![MDP02.W_REQUEST, MDP02.W_HEARTBEAT, MDP02.W_DISCONNECT].find((i) => i === messageType)) {
-            this.emitErr(new MDP02.E_PROTOCOL(MDP02.dumpFrames(rep)));
             return false;
         }
 
         if (messageType === MDP02.W_REQUEST && (rep.length < 5 || !rep[2].toString())) {
-            this.emitErr(new MDP02.E_PROTOCOL(MDP02.dumpFrames(rep)));
             return false;
         }
 
@@ -131,6 +127,8 @@ class Worker extends EventEmitter {
                     }
                     break;
             }
+        } else {
+            this.emitErr(new MDP02.E_PROTOCOL(MDP02.dumpFrames(rep)));
         }
     }
 
