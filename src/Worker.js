@@ -9,9 +9,7 @@ const EventEmitter = require('events'),
     Writable = require('stream').Writable;
 
 const events = {
-    EV_MESSAGE: 'message',
     EV_REQ: 'request',
-    EV_HB: 'heartbeat',
     EV_CLOSE_REQ: 'close-request'
 };
 
@@ -111,7 +109,6 @@ class Worker extends EventEmitter {
             var messageType = rep[1].toString();
             switch (messageType) {
                 case MDP02.W_HEARTBEAT:
-                    this.emit(events.EV_HB, {});
                     this.heartBeatTs = Date.now();
                     break;
                 case MDP02.W_DISCONNECT:
@@ -172,7 +169,7 @@ class Worker extends EventEmitter {
     startHeartBeat() {
         this.heartBeatTs = Date.now();
         this._hbTimer = setInterval(() => {
-            if (Date.now() - this.heartBeatTs > this.workerTolerance) {
+            if (Date.now() - this.heartBeatTs > this.timeout) {
                 this.stop(true);
                 this.start();
             } else {
@@ -206,7 +203,6 @@ function makeWorker(props) {
     });
 
     socket.on('message', (...args) => {
-        worker.emit(events.EV_MESSAGE, args);
         try {
             worker._onMsg(args);
         } catch (err) {

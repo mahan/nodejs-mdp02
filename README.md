@@ -60,7 +60,7 @@ const worker = makeWorker({
     address: "tcp://127.0.0.1:4242"
 });
 
-worker.on(makeWorker.events.EV_REQ, function (req) {
+worker.on('request', function (req) {
     let response = req.response,
         readable = fs.createReadStream(req.request.toString()); //no exception handling
     readable.pipe(response);
@@ -97,22 +97,26 @@ outputFile.on('finish', function() {
 
 ### Broker
 
-The broker can be accessed with:
+Broker can be accessed with:
 const makeBroker = require('mdp02/Broker');
 
 **makeBroker(opts) -> Broker** is a function that returns a Broker instance.
 A Broker is an instance of EventEmitter.
 
 **_opts::Object{bindings, workerTimeout, clientTimeout}_**
-* **bindings**: Array of addresses to which the  Broker will be bound to.
-    ex.: ['tcp://127.0.0.1', 'ipc:///tmp/mdp02-01']
+* **bindings(required)**: Array of addresses to which the  Broker will be bound to.
+    ex.: ['tcp://127.0.0.1:3333', 'ipc:///tmp/mdp02-01']
 * **workerTimeout**: (default to 5000 msec) Timeout for which a connected worker
   is considered stale and unregistered. A disconnect message is sent to the worker,
   so that the worker will try to automatically disconnect and reconnect to the worker.
-* **clientTimeout**: (default to 5000 msec) Timeout for which a client request is considered
- expired and removed form the request queue.
+* **clientTimeout**: (default to 5000 msec) Timeout for which a client request is considered expired and removed form the request queue.
 
-####Broker Events
+#### Worker Methods
+
+ * **start** Binds the broker to the given addresses
+ * **stop** Disconnects the broker and removes all listeners
+
+#### Broker Events
 
 > name: **'error'**, Event: Error<br>
 Emitted on erros (soket or protocol errors)
@@ -143,3 +147,36 @@ Emitted when a worker is actually serving a request
 Emitted when a worker is going to be disconnected from the broker
 * Event.binding: the binding address that received the request
 * Event.service: the service name
+
+
+### Worker
+
+Worker can be accessed with:
+const makeWorker = require('mdp02/Worker');
+
+**makeWorker(opts) -> Worker** is a function that returns a Worker instance.
+A Worker is an instance of EventEmitter.
+
+**_opts::Object{address, timeout, hbFrequence}_**
+* **address(required)**: The address to use to connect to the Broker.
+    ex.: 'tcp://127.0.0.1:3333'
+* **timeout**: (default to 5000 msec) Timeout for which a broker
+  is considered in stale. A disconnect message is sent to the broker and a restart
+  action is performed.
+* **hbFrequence**: (default to 1000 msec) Frequence of heart beat, used to check connection/broker
+heath.
+
+#### Worker Methods
+
+* **start** Connects the worker to the Broker
+* **stop** Disconnects the worker from the Broker
+
+#### Worker Events
+
+> name: **'request'**, Event: Object{response::Stream, request::Buffer}<br>
+Emitted when a worker receives a request from a Client through a broker
+* Event.response: a stream used to send the response back
+* Event.request: the request message originated from the client
+
+> name: **'close-request'**, Event: _null_<br>
+Emitted when the worker has finished sennding back its reply
