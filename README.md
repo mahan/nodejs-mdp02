@@ -110,7 +110,8 @@ A Broker is an instance of EventEmitter.
   is considered stale and unregistered. A disconnect message is sent to the worker,
   so that the worker will try to automatically disconnect and reconnect to the worker.
 * **clientTimeout**: (default to 5000 msec) Timeout for which a client request is considered expired and removed form the request queue.
-
+* **hbFrequence**: (default to 1/5 of workerTimeout) Frequence of heart beat, used to check connections with brokers and
+clients ealth.
 #### Worker Methods
 
  * **start** Binds the broker to the given addresses
@@ -163,8 +164,8 @@ A Worker is an instance of EventEmitter.
 * **timeout**: (default to 5000 msec) Timeout for which a broker
   is considered in stale. A disconnect message is sent to the broker and a restart
   action is performed.
-* **hbFrequence**: (default to 1000 msec) Frequence of heart beat, used to check connection/broker
-heath.
+* **hbFrequence**: (default to 1/5 of timeout) Frequence of heart beat, used to check connection/broker
+ealth.
 
 #### Worker Methods
 

@@ -76,7 +76,7 @@ class Client extends EventEmitter {
 
     _intervalFunction() {
         if (this._tries < this.maxRetries) {
-            this._disconnect()
+            this._disconnect();
             this._start();
             this._sendMsg();
             this._tries++;
@@ -213,7 +213,7 @@ Object.defineProperty(Client.prototype, 'status', {
             currentService: this._service
         };
     }
-})
+});
 
 function makeClient(props) {
     let client = new Client();

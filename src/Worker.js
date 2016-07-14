@@ -34,11 +34,13 @@ class ZMQWritable extends Writable {
     }
 
     _write(chunk, enc, cb) {
+        this.zmqWorker.sendingMessage = true;
         this.zmqWorker._sendMsg(this._chunkToBuffer(chunk, enc), true);
         cb();
     }
 
     _writev(chunks, cb) {
+        this.zmqWorker.sendingMessage = true;
         chunks.forEach((chunk)=>{
             this.zmqWorker._sendMsg(this._chunkToBuffer(chunk, enc), true);
         });
@@ -48,6 +50,7 @@ class ZMQWritable extends Writable {
     end(chunk, enc, cb) {
         this.zmqWorker._sendMsg(this._chunkToBuffer(chunk, enc));
         super.end(chunk, enc, cb);
+        this.zmqWorker.sendingMessage = false;
     }
 }
 
@@ -67,10 +70,11 @@ class Worker extends EventEmitter {
         }
     }
 
-    stop(skipDisconnect) {
+    stop(skipDisconnectMessage) {
+        this.sendingMessage = false;
         if (this.connected) {
             this.stopHeartBeat();
-            skipDisconnect || this._sendDisconnect();
+            skipDisconnectMessage || this._sendDisconnect();
             this.connected = false;
             delete this._currentClient;
             if (processExit) {
@@ -171,7 +175,7 @@ class Worker extends EventEmitter {
                 this.stop(true);
                 this.start();
             } else {
-                this._sendHeartBeat();
+                this.sendingMessage || this._sendHeartBeat();
             }
         }, this.hbFrequence);
     }
@@ -190,11 +194,11 @@ function makeWorker(props) {
         socket = zmq.socket('dealer');
     Object.assign(worker, {
         timeout: MDP02.TIMEOUT,
-        hbFrequence: MDP02.HB_FREQUENCE,
         socket: socket,
         address: props.address
     }, props);
 
+    worker.hbFrequence = worker.hbFrequence || Math.trunc(worker.timeout / 3);
     MDP02.addToProcessListener(() => {
         processExit = true;
         worker.stop();

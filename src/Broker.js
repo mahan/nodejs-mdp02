@@ -28,6 +28,12 @@ function protocolError(broker, frames) {
     broker.emitErr(new MDP02.E_PROTOCOL('Wrong frames number', frames));
 }
 
+function workerProtocolError(broker, worker, frames) {
+    broker.emitErr(new MDP02.E_PROTOCOL('Wrong frames number', frames));
+    broker.removeWorker(worker);
+    broker._sendDisconnect(worker);
+}
+
 function prepareClientMessageStrategies() {
     let strategies = {};
 
@@ -62,18 +68,16 @@ function prepareWorkerMessageStrategies() {
     strategies[MDP02.W_HEARTBEAT] = (broker, socket, bSocketId, frames) => {
         let worker = broker.workers[toUInt32(bSocketId)];
         if (frames.length !== 2) {
-            protocolError(broker, frames);
-        } else {
-            broker._sendHeartBeat(worker);
+            workerProtocolError(broker, worker, frames);
         }
     };
 
     strategies[MDP02.W_DISCONNECT] = (broker, socket, bSocketId, frames) => {
         let worker = broker.workers[toUInt32(bSocketId)];
+        broker.removeWorker(worker);
         if (frames.length !== 2) {
-            protocolError(broker, frames);
+            protocolError(broker, worker, frames);
         } else {
-            broker.removeWorker(worker);
             broker.emit(events.EV_DISCONNECT, {socketId: bSocketId, service: worker.service});
         }
     };
@@ -103,7 +107,7 @@ function prepareWorkerMessageStrategies() {
             }
             broker.fulfillRequests();
         } else {
-            protocolError(broker, frames);
+            workerProtocolError(broker, worker, frames);
         }
     };
 
@@ -118,11 +122,12 @@ function prepareWorkerMessageStrategies() {
                 request.socket.send([bClientSocketId, MDP02.CLIENT, MDP02.C_PARTIAL, worker.service, data]);
             }
         } else {
-            protocolError(broker, frames);
+            workerProtocolError(broker, worker, frames);
         }
     };
     strategies[events.EV_ERR] = (broker, socket, bSocketId, frames) => {
-        protocolError(broker, frames);
+        let worker = broker.workers[toUInt32(bSocketId)];
+        workerProtocolError(broker, worker, frames);
     };
     return strategies;
 }
@@ -167,12 +172,16 @@ class Broker extends EventEmitter {
                 });
             });
 
+            this._hbTimer = setInterval(() => {
+                this.cleanupWorkersAndRequests();
+            }, this.hbFrequence);
             return true;
         }
     }
 
     stop() {
         if (this.sockets.length) {
+            clearInterval(this._hbTimer);
             this.requests = {};
             this.workers = {};
             this.services = {};
@@ -187,8 +196,6 @@ class Broker extends EventEmitter {
     }
 
     _onMsg(socket, rep) {
-        this.cleanupWorkersAndRequests();
-
         let bSocketId = rep[0],
             frames = rep.slice(1),
             header = frames[0].toString();
@@ -261,11 +268,13 @@ class Broker extends EventEmitter {
     }
 
     _sendDisconnect(worker) {
-        worker.socket.send([
-            worker.socketId,
-            MDP02.WORKER,
-            MDP02.W_DISCONNECT
-        ]);
+        if (worker) {
+            worker.socket.send([
+                worker.socketId,
+                MDP02.WORKER,
+                MDP02.W_DISCONNECT
+            ]);
+        }
     }
 
     enqueueRequest(socket, bSocketId, serviceName, command) {
@@ -325,7 +334,9 @@ class Broker extends EventEmitter {
     }
 
     removeWorker(worker) {
-        delete this.workers[toUInt32(worker.socketId)];
+        if (worker) {
+            delete this.workers[toUInt32(worker.socketId)];
+        }
     }
 
     cleanupWorkersAndRequests() {
@@ -348,6 +359,8 @@ class Broker extends EventEmitter {
                     socketId: currentWorker.socket.boundTo,
                     service: currentWorker.service
                 });
+            } else {
+                this._sendHeartBeat(currentWorker);
             }
         });
     }
@@ -364,7 +377,7 @@ function makeBroker(props) {
         services: {},
         sockets: []
     }, props);
-
+    broker.hbFrequence = broker.hbFrequence || Math.trunc(broker.workerTimeout / 3);
     MDP02.addToProcessListener(() => broker.stop());
     return broker;
 }
