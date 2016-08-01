@@ -2,19 +2,19 @@
 
 require('babel-polyfill');
 
-function TimeoutError(message) {
-    this.message = message;
-    this.stack = (new Error()).stack;
+class TimeoutError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'TimeoutError';
+    }
 }
-TimeoutError.prototype = new Error;
-TimeoutError.prototype.name = 'TimeoutError';
 
-function ProtocolError(message) {
-    this.message = message;
-    this.stack = (new Error()).stack;
+class ProtocolError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'ProtocolError';
+    }
 }
-ProtocolError.prototype = new Error;
-ProtocolError.prototype.name = 'ProtocolError';
 
 module.exports.TimeoutError = TimeoutError;
 module.exports.ProtocolError = ProtocolError;
