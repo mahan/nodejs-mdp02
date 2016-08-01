@@ -11,4 +11,7 @@ const broker = makeBroker({
     ]
 });
 
+broker.on('error', (err) => {
+    console.error('err: ',err);
+});
 broker.start();
