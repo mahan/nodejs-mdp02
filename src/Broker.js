@@ -25,11 +25,11 @@ function toUInt32(buff) {
 }
 
 function protocolError(broker, frames) {
-    broker.emitErr(new MDP02.E_PROTOCOL('Wrong frames number', frames));
+    broker.emitErr(new MDP02.E_PROTOCOL('Wrong frames number'+ (frames && frames.length || 0)));
 }
 
 function workerProtocolError(broker, worker, frames) {
-    broker.emitErr(new MDP02.E_PROTOCOL('Wrong frames number', frames));
+    broker.emitErr(new MDP02.E_PROTOCOL('Wrong frames number: ' + (frames && frames.length || 0)));
     broker.removeWorker(worker);
     broker._sendDisconnect(worker);
 }
@@ -39,7 +39,6 @@ function prepareClientMessageStrategies() {
 
     strategies[MDP02.C_REQUEST] = (broker, socket, bSocketId, frames) => {
         if (frames.length < 3) {
-            console.error(`protocol error`);
             protocolError(broker);
         } else {
             let serviceName = frames[2].toString(),
@@ -335,7 +334,13 @@ class Broker extends EventEmitter {
 
     removeWorker(worker) {
         if (worker) {
-            delete this.workers[toUInt32(worker.socketId)];
+            let socketId = worker.socketId,
+                services = this.services[worker.service],
+                servicePos = services.indexOf(toUInt32(socketId));
+            if (servicePos >= 0) {
+                services.splice(servicePos, 1);
+            }
+            delete this.workers[toUInt32(socketId)];
         }
     }
 
@@ -355,7 +360,7 @@ class Broker extends EventEmitter {
             if (now - currentWorker.ts > workerTimeout) {
                 this._sendDisconnect(currentWorker);
                 this.removeWorker(currentWorker);
-                broker.emit(events.EV_DISCONNECT, {
+                this.emit(events.EV_DISCONNECT, {
                     socketId: currentWorker.socket.boundTo,
                     service: currentWorker.service
                 });

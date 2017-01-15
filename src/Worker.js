@@ -80,7 +80,7 @@ class Worker extends EventEmitter {
             if (processExit) {
                 this.socket.close();
             } else {
-                this.socket.disconnect(address);
+                this.socket.disconnect(this.address);
             }
         }
     }
