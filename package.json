@@ -1,6 +1,6 @@
 {
   "name": "mdp02",
-  "version": "1.0.0",
+  "version": "0.9.0",
   "author": {
     "name": "Andrea Chiumenti",
     "email": "achiumenti@red.software.systems"
@@ -13,10 +13,10 @@
     "microservices"
   ],
   "main": "./lib/index.js",
-  "homepage": "http://elenajs.org/",
+  "homepage": "https://bitbucket.org/RedSoftwareSystems/nodejs-mdp02",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elenajs/elenajs2-core.git"
+    "url": "https://bitbucket.org/RedSoftwareSystems/nodejs-mdp02.git"
   },
   "license": "MIT",
   "dependencies": {
