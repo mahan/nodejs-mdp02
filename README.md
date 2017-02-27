@@ -52,7 +52,7 @@ A service is identified by its name, and a **service may be served by more than 
 only a request a time.
 
 ```javascript
-const makeWorker = require('mdp02/Worker'),
+const makeWorker = require('mdp02').makeWorker,
     fs = require('fs');
 
 const worker = makeWorker({
@@ -76,7 +76,7 @@ Clients can execute a request at a time, requests sent are queued into Client in
 On send method a stream is returned.
 
 ```javascript
-const makeClient = require('mdp02/Client'),
+const makeClient = require('mdp02').makeClient,
     fs = require('fs');
 
 let helloClient = makeClient({address: "tcp://127.0.0.1:4242"}),
@@ -98,7 +98,7 @@ outputFile.on('finish', function() {
 ### Broker
 
 Broker can be accessed with:
-const makeBroker = require('mdp02/Broker');
+const makeBroker = require('mdp02').makeBroker;
 
 **makeBroker(opts) -> Broker** is a function that returns a Broker instance.
 A Broker is an instance of EventEmitter.
@@ -153,7 +153,7 @@ Emitted when a worker is going to be disconnected from the broker
 ### Worker
 
 Worker can be accessed with:
-const makeWorker = require('mdp02/Worker');
+const makeWorker = require('mdp02').makeWorker;
 
 **makeWorker(opts) -> Worker** is a function that returns a Worker instance.
 A Worker is an instance of EventEmitter.
@@ -188,7 +188,7 @@ Emitted when the worker has finished sennding back its reply
 ### Client
 
 Client can be accessed with:
-const makeWorker = require('mdp02/Client');
+const makeWorker = require('mdp02').makeClient;
 
 **makeClient(opts) -> Client** is a function that returns a Client instance.
 A Client enqueue requests for the desired services and obtain responses in the
@@ -206,6 +206,10 @@ function makePromise() {
         let client = newClient(),
             response = client.send("now");
         response.on('data', function(data) {
+            console.log('received', data);
+        });
+
+        response.on('end', function(data) {
             resolve(parseInt(data, 10));
         });
         response.on('error', function(err) {
