@@ -34,7 +34,7 @@ to different end points.
 
 ```javascript
 const broker = makeBroker({
-    addresses: [
+    bindings: [
         "tcp://127.0.0.1:4242",
         "tcp://192.168.100.1:4243",
         "ipc:///tmp/mdp02-01"
