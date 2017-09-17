@@ -3,5 +3,5 @@ dist
 nbproject
 .idea
 *.iml
-*.log.*
+*.log
 node_modules
