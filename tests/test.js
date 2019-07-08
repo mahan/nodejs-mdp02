@@ -3,7 +3,7 @@
 const spawn = require('child_process').spawn,
     path = require('path'),
     fs = require('fs'),
-    {tcp, tcp2, ipc} = require("./addresses"),
+    {tcp, tcp2, tcp3} = require("./addresses"),
     makeClient = require('../src/Client'),
     assert = require('assert');
 
@@ -55,6 +55,8 @@ describe("mdp02", function() {
 
     describe("Client", function() {
         it("should call number service", function(cb) {
+
+            this.timeout(5000);
             let timeClient = newClient();
 
             let response = timeClient.send("number"),
@@ -74,6 +76,9 @@ describe("mdp02", function() {
 
         it("should use stream to manage worker response", function(cb) {
             const expected = "Hello world!";
+
+            this.timeout(5000);
+
             let helloClient = newClient(),
                 response = helloClient.send("sayhello", "world"),
                 message = '';
@@ -109,14 +114,19 @@ describe("mdp02", function() {
         });
 
         it("can enqueue requests", function(cb) {
+            this.timeout(15000);
+
             function makePromise() {
+                //console.log('makePromise');
                 return new Promise(function(resolve, reject) {
                     let client = newClient(),
                         response = client.send("now");
                     response.on('data', function(data) {
+                        //console.log('makePromise 1');
                         resolve(parseInt(data, 10));
                     });
                     response.on('error', function(err) {
+                        //console.log('makePromise 2');
                         reject(err);
                     });
                 });
@@ -230,6 +240,8 @@ describe("mdp02", function() {
 
     describe("Broker", function() {
         it(`should serve using different sockets (client on ${tcp2}, worker on ${tcp})`, function(cb) {
+            this.timeout(5000);
+
             let timeClient = newClient(tcp2),
                 response = timeClient.send("number");
             response.on('data', function(chunk) {
@@ -243,9 +255,11 @@ describe("mdp02", function() {
             });
         });
 
-        it("should work using ipc protocol", function(cb) {
+        it("should work using tcp3 protocol", function(cb) {
             let today = new Date().toJSON().slice(0, 10),
-                dateClient = newClient(ipc);
+                dateClient = newClient(tcp3);
+
+            this.timeout(5000);
 
             let response = dateClient.send("date");
             response.on('data', function(chunk) {
@@ -261,7 +275,10 @@ describe("mdp02", function() {
 
         });
 
-        it("should serve using different sockets (client on tcp, worker on ipc)", function(cb) {
+        it("should serve using different sockets (client on tcp, worker on tcp3)", function(cb) {
+
+            this.timeout(5000);
+
             let today = new Date().toJSON().slice(0, 10),
                 dateClient = newClient();
 
@@ -273,7 +290,7 @@ describe("mdp02", function() {
                 dateClient.stop();
                 cb();
             });
-            response.on('error', function() {
+            response.on('error', function(err) {
                 dateClient.stop();
                 cb(err);
             });

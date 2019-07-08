@@ -1,11 +1,11 @@
 "use strict";
 
 const makeWorker = require('../src/Worker'),
-    ipc = require("./addresses").ipc;
+    tcp2 = require("./addresses").tcp2;
 
 const worker = makeWorker({
     serviceName: "now",
-    address: ipc
+    address: tcp2
 });
 
 worker.on(makeWorker.events.EV_REQ, function (req) {

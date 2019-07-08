@@ -4,7 +4,7 @@
 
 require('babel-polyfill');
 const EventEmitter = require('events'),
-    zmq = require('zmq'),
+    zmq = require('zeromq'),
     MDP02 = require('./mdp02'),
     Writable = require('stream').Writable;
 
