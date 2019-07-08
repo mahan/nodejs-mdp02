@@ -1,5 +1,7 @@
 # MDP02
 
+## IMPORTANT: This is a clone of https://bitbucket.org/RedSoftwareSystems/nodejs-mdp02/src/master/ for my personal modifications and use.
+
 This is the implementation of the MDP written in ES6 and relying on [bindings](https://github.com/JustinTulloss/zeromq.node)
 for node.js and io.js to [ZeroMQ](http://zeromq.org/)
 
